@@ -51,6 +51,9 @@ async def api_key_middleware(request: Request, call_next):
     """Enforce x-api-key on /api/ routes if ASC_API_KEY is set in the environment."""
     required_key = os.environ.get("ASC_API_KEY")
     if required_key and request.url.path.startswith("/api/"):
+        # PDF reports are direct browser navigations — no custom headers possible
+        if request.url.path.startswith("/api/report/"):
+            return await call_next(request)
         if request.headers.get("x-api-key") != required_key:
             return JSONResponse({"detail": "Unauthorized"}, status_code=401)
     return await call_next(request)

@@ -5,6 +5,34 @@ Uses fpdf2 (pure Python, no system dependencies).
 from fpdf import FPDF
 import datetime
 
+# Helvetica only supports latin-1. Strip/replace anything outside that range.
+_UNICODE_MAP = str.maketrans({
+    "\u2014": "-",   # em dash
+    "\u2013": "-",   # en dash
+    "\u2018": "'",   # left single quote
+    "\u2019": "'",   # right single quote
+    "\u201c": '"',   # left double quote
+    "\u201d": '"',   # right double quote
+    "\u2026": "...", # ellipsis
+    "\u2022": "*",   # bullet
+    "\u2192": "->",  # right arrow
+    "\u2190": "<-",  # left arrow
+    "\u25c6": "*",   # black diamond
+    "\u25c8": "*",   # white diamond
+    "\u2713": "v",   # check mark
+    "\u00d7": "x",   # multiplication sign
+    "\u00a0": " ",   # non-breaking space
+    "\u2265": ">=",  # >=
+    "\u2264": "<=",  # <=
+})
+
+def _safe(text: str) -> str:
+    """Replace common Unicode chars then drop anything outside latin-1."""
+    if not text:
+        return ""
+    text = str(text).translate(_UNICODE_MAP)
+    return text.encode("latin-1", errors="replace").decode("latin-1")
+
 
 SEV_COLORS = {
     "critical": (248, 113, 113),
@@ -23,7 +51,7 @@ class _Report(FPDF):
     def header(self):
         self.set_font("Helvetica", "B", 11)
         self.set_text_color(30, 30, 30)
-        self.cell(0, 8, "ASC — Agentic Strategic Coach", align="L")
+        self.cell(0, 8, "ASC - Agentic Strategic Coach", align="L")
         self.set_font("Helvetica", "", 9)
         self.set_text_color(120, 120, 120)
         date = self._session.get("created_at", "")[:10]
@@ -36,7 +64,7 @@ class _Report(FPDF):
         self.set_y(-14)
         self.set_font("Helvetica", "I", 8)
         self.set_text_color(160, 160, 160)
-        self.cell(0, 6, f"Page {self.page_no()} — Confidential coaching report", align="C")
+        self.cell(0, 6, f"Page {self.page_no()} - Confidential coaching report", align="C")
 
 
 def _section_title(pdf: FPDF, title: str):
@@ -50,7 +78,7 @@ def _section_title(pdf: FPDF, title: str):
 def _body(pdf: FPDF, text: str, color=(70, 70, 70)):
     pdf.set_font("Helvetica", "", 10)
     pdf.set_text_color(*color)
-    pdf.multi_cell(0, 5.5, text or "—")
+    pdf.multi_cell(0, 5.5, _safe(text) or "-", new_x="LMARGIN", new_y="NEXT")
     pdf.ln(1)
 
 
@@ -92,10 +120,10 @@ def generate_pdf(session: dict, result: dict, mistakes: list) -> bytes:
     # ── Title ─────────────────────────────────────────────────────────────────
     pdf.set_font("Helvetica", "B", 18)
     pdf.set_text_color(15, 15, 15)
-    pdf.cell(0, 10, f"{game} — Round {rnum} Analysis", new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(0, 10, _safe(f"{game} - Round {rnum} Analysis"), new_x="LMARGIN", new_y="NEXT")
     pdf.set_font("Helvetica", "", 11)
     pdf.set_text_color(100, 100, 100)
-    pdf.cell(0, 6, f"{atk}  (ATK)  vs  {defn}  (DEF)  ·  Winner: {winner}", new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(0, 6, _safe(f"{atk}  (ATK)  vs  {defn}  (DEF)  -  Winner: {winner}"), new_x="LMARGIN", new_y="NEXT")
     pdf.ln(6)
 
     # ── KPIs ──────────────────────────────────────────────────────────────────
@@ -152,7 +180,7 @@ def generate_pdf(session: dict, result: dict, mistakes: list) -> bytes:
 
             pdf.set_font("Helvetica", "B", 10)
             pdf.set_text_color(*col)
-            pdf.cell(0, 6, f"{i}. [{mm:02d}:{ss:02d}]  {sev.upper()}  —  {cat}", new_x="LMARGIN", new_y="NEXT")
+            pdf.cell(0, 6, _safe(f"{i}. [{mm:02d}:{ss:02d}]  {sev.upper()}  -  {cat}"), new_x="LMARGIN", new_y="NEXT")
 
             pdf.set_font("Helvetica", "I", 9)
             pdf.set_text_color(60, 60, 60)
@@ -161,14 +189,14 @@ def generate_pdf(session: dict, result: dict, mistakes: list) -> bytes:
             pdf.cell(0, 5, "What went wrong:", new_x="LMARGIN", new_y="NEXT")
             pdf.set_font("Helvetica", "", 9)
             pdf.set_text_color(80, 80, 80)
-            pdf.multi_cell(0, 5, m.get("description", ""), padding=(0, 0, 0, 8))
+            pdf.multi_cell(0, 5, _safe("    " + m.get("description", "")), new_x="LMARGIN", new_y="NEXT")
 
             pdf.set_font("Helvetica", "B", 9)
             pdf.set_text_color(30, 140, 90)
             pdf.cell(0, 5, "Better alternative:", new_x="LMARGIN", new_y="NEXT")
             pdf.set_font("Helvetica", "", 9)
             pdf.set_text_color(40, 120, 80)
-            pdf.multi_cell(0, 5, m.get("better_alternative", ""), padding=(0, 0, 0, 8))
+            pdf.multi_cell(0, 5, _safe("    " + m.get("better_alternative", "")), new_x="LMARGIN", new_y="NEXT")
 
             if m.get("scenario"):
                 pdf.set_font("Helvetica", "B", 9)
@@ -176,7 +204,7 @@ def generate_pdf(session: dict, result: dict, mistakes: list) -> bytes:
                 pdf.cell(0, 5, "If corrected (predicted outcome):", new_x="LMARGIN", new_y="NEXT")
                 pdf.set_font("Helvetica", "", 9)
                 pdf.set_text_color(100, 100, 180)
-                pdf.multi_cell(0, 5, m["scenario"], padding=(0, 0, 0, 8))
+                pdf.multi_cell(0, 5, _safe("    " + m["scenario"]), new_x="LMARGIN", new_y="NEXT")
 
             pdf.ln(3)
 
@@ -187,7 +215,7 @@ def generate_pdf(session: dict, result: dict, mistakes: list) -> bytes:
         for s in strengths:
             pdf.set_font("Helvetica", "", 10)
             pdf.set_text_color(30, 140, 90)
-            pdf.multi_cell(0, 5.5, f"✓  {s}")
+            pdf.multi_cell(0, 5.5, _safe(f"v  {s}"), new_x="LMARGIN", new_y="NEXT")
             pdf.ln(1)
 
     # ── Next Round Plan ───────────────────────────────────────────────────────
@@ -216,7 +244,7 @@ def generate_pdf(session: dict, result: dict, mistakes: list) -> bytes:
                 pdf.set_font("Helvetica", "", 9)
                 pdf.set_text_color(*[min(c + 30, 255) for c in color])
                 for item in items:
-                    pdf.multi_cell(0, 5, f"→  {item}", padding=(0, 0, 0, 6))
+                    pdf.multi_cell(0, 5, _safe(f"  ->  {item}"), new_x="LMARGIN", new_y="NEXT")
                 pdf.ln(2)
 
         if plan.get("if_losing_again"):
@@ -233,7 +261,7 @@ def generate_pdf(session: dict, result: dict, mistakes: list) -> bytes:
         traj_col = {"improving": (30, 140, 90), "declining": (200, 60, 60)}.get(traj, (150, 120, 30))
         pdf.set_font("Helvetica", "B", 10)
         pdf.set_text_color(*traj_col)
-        pdf.cell(0, 6, f"Trajectory: {traj.title()}  |  Sessions analysed: {trend.get('sessions_analysed', 0)}", new_x="LMARGIN", new_y="NEXT")
+        pdf.cell(0, 6, _safe(f"Trajectory: {traj.title()}  |  Sessions analysed: {trend.get('sessions_analysed', 0)}"), new_x="LMARGIN", new_y="NEXT")
         if trend.get("coaching_priority"):
             _body(pdf, trend["coaching_priority"])
         if trend.get("top_recurring_mistakes"):
@@ -243,7 +271,7 @@ def generate_pdf(session: dict, result: dict, mistakes: list) -> bytes:
             pdf.set_font("Helvetica", "", 9)
             for m in trend["top_recurring_mistakes"]:
                 pdf.set_text_color(80, 80, 80)
-                pdf.multi_cell(0, 5, f"• {m.get('category','').title()} ({m.get('frequency',0)}×): {m.get('insight','')}", padding=(0, 0, 0, 4))
+                pdf.multi_cell(0, 5, _safe(f"* {m.get('category','').title()} ({m.get('frequency',0)}x): {m.get('insight','')}"), new_x="LMARGIN", new_y="NEXT")
             pdf.ln(1)
 
     return bytes(pdf.output())
