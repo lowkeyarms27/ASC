@@ -8,6 +8,12 @@ Built for competitive esports teams to eliminate manual VOD review time. Support
 
 ---
 
+## Demo
+
+[Watch the video demo](https://docs.google.com/videos/d/1quZ7-HTwyrbEg6Zz9SfgEPC6RtoTsJ_h9JLL_aD4azA/edit?usp=sharing)
+
+---
+
 ## How It Works
 
 Analysis runs in two phases.
