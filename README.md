@@ -257,3 +257,31 @@ Gemini 2.5 Flash charges per minute of video. Approximate costs per analysis:
 - Full 14-round match: ~$0.13
 
 Context caching reduces repeated video token charges by approximately 6× across the agent pipeline.
+
+---
+
+## What I Learned Building This
+
+### Parallel AI Pipelines
+The Observer runs 9 ML sources simultaneously — Gemini, Twelve Labs, YOLO, ByteTrack, EasyOCR, Whisper, Librosa, CLIP, and NVIDIA Cosmos. Running them in parallel with `concurrent.futures` and a 90-second timeout taught me that real-world AI pipelines are about fault tolerance, not just accuracy. Some sources time out. Some return garbage. The system has to keep moving. I learned to design pipelines that degrade gracefully — if NVIDIA Cosmos doesn't respond in 90 seconds, the Observer proceeds with whatever finished, not waits forever.
+
+### Gemini Context Caching
+Uploading a video to Gemini and creating a context cache means the video tokens are charged once, then reused across every agent call. Without caching, a 14-round match would cost ~6x more because each of the 7 agents would re-process the same video. The complication I hit: Gemini doesn't allow tool use with cached content simultaneously. The Tactician needs `examine_timestamp` as a tool, so it can't use the cache — it re-uploads the file each time. Learning the exact boundary of what an API allows versus what the docs imply is a skill in itself.
+
+### Video Processing with FFmpeg
+FFmpeg is one of those tools where the documentation covers everything and explains nothing. I learned to extract 15-second clips around specific timestamps, handle variable framerates, output to formats that browsers can play inline, and run FFmpeg from Python without blocking the async event loop. I also hit the systemd PATH bug — FFmpeg was installed at `/usr/bin/ffmpeg` but the service only had `/root/asc/venv/bin` in its PATH, so it silently failed. Production systems have different environments than development machines.
+
+### PDF Generation Constraints
+`fpdf2` only supports latin-1 with the built-in Helvetica font. AI output contains em dashes, smart quotes, arrows, and all sorts of Unicode that crashes the PDF renderer. I had to build a `_safe()` function that maps every known problematic character to a latin-1 equivalent before passing text to fpdf2. I also hit a layout bug where `multi_cell` leaves the cursor at the right edge of the page instead of resetting to the left margin — requiring `new_x="LMARGIN"` on every single call. PDF generation taught me that library documentation describes the happy path, and the real edge cases are buried in GitHub issues.
+
+### Deploying to a Linux Server
+ASC is the first project I actually deployed — Vultr Ubuntu server, systemd service, nginx, the whole thing. I learned how systemd services work, why environment variables set in your shell don't exist in a service process, how to read `journalctl` logs when something breaks silently, and why you need to `daemon-reload` after editing a service file. Deployment is a completely different skill from development, and it broke in ways that had nothing to do with my Python code.
+
+### Sequential Agent Chains with Quality Gates
+The 7-agent pipeline (Observer → Tactician → Debater → Critic → Coach → Statistician → Planner) taught me that quality gates between agents matter as much as the agents themselves. The Critic scores every finding for confidence and filters out anything below the threshold before the Coach sees it. Without that gate, the Coach writes confidently about low-confidence observations and the report sounds wrong even when it's technically accurate. I learned to think about where information degrades in a pipeline, not just how it flows.
+
+### API Key Middleware in FastAPI
+Every route in ASC requires an `x-api-key` header except the PDF download route, which gets navigated to directly by the browser (can't set custom headers on a `<a href>` click). I had to whitelist `/api/report/` in the middleware explicitly. This taught me that authentication middleware needs to be designed around how clients actually make requests, not just how they ideally should. The PDF case would never appear in unit tests but broke immediately in the real UI.
+
+### The Gap Between "Works" and "Ships"
+ASC was built as a hackathon project and then actually deployed to a live server. The gap between "it works on my laptop" and "it runs reliably on a server" involved fixing 8 separate bugs — none of which were logic errors in the AI pipeline. They were all infrastructure: wrong PATH, missing directories, encoding mismatches, API key middleware edge cases, fpdf2 cursor positioning. Building something that works is different from building something that ships, and the difference is almost entirely boring infrastructure problems.
